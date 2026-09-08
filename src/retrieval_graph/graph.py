@@ -41,6 +41,14 @@ async def analyze_and_route_query(
     response = cast(
         Router, await model.with_structured_output(Router).ainvoke(messages)
     )
+    # Structured output occasionally returns the schema's field name
+    # ("object") instead of a valid enum value; default such a miss to a
+    # research route rather than crashing route_query downstream.
+    if response.get("type") not in ("more-info", "langchain", "general"):
+        response = Router(
+            type="langchain",
+            logic=response.get("logic") or "Defaulted to research on an unparseable route.",
+        )
     return {"router": response}
 
 
