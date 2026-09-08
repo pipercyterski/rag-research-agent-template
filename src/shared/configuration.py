@@ -27,12 +27,19 @@ class BaseConfiguration:
     )
 
     retriever_provider: Annotated[
-        Literal["elastic-local", "elastic", "pinecone", "mongodb"],
+        Literal["elastic-local", "elastic", "pinecone", "mongodb", "dystopic"],
         {"__template_metadata__": {"kind": "retriever"}},
     ] = field(
         default="elastic-local",
         metadata={
             "description": "The vector store provider to use for retrieval. Options are 'elastic', 'pinecone', or 'mongodb'."
+        },
+    )
+
+    context_store: str = field(
+        default="langchain_docs",
+        metadata={
+            "description": "Dystopic context store id to retrieve from when retriever_provider is 'dystopic'."
         },
     )
 

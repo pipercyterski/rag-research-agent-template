@@ -92,6 +92,20 @@ def make_mongodb_retriever(
 
 
 @contextmanager
+def make_dystopic_retriever(
+    configuration: BaseConfiguration, embedding_model: Embeddings
+) -> Generator[VectorStoreRetriever, None, None]:
+    """Serve+capture retrieval over the Dystopic-seeded context store."""
+    from shared.dystopic_retrieval import DystopicSeededRetriever
+
+    yield DystopicSeededRetriever(  # type: ignore[misc]
+        store=configuration.context_store,
+        embedding_model=embedding_model,
+        search_kwargs=configuration.search_kwargs,
+    )
+
+
+@contextmanager
 def make_retriever(
     config: RunnableConfig,
 ) -> Generator[VectorStoreRetriever, None, None]:
@@ -109,6 +123,10 @@ def make_retriever(
 
         case "mongodb":
             with make_mongodb_retriever(configuration, embedding_model) as retriever:
+                yield retriever
+
+        case "dystopic":
+            with make_dystopic_retriever(configuration, embedding_model) as retriever:
                 yield retriever
 
         case _:

@@ -1,0 +1,138 @@
+{
+  "kb_article": {
+    "lg-persistence": {
+      "id": "lg-persistence",
+      "title": "LangGraph persistence and checkpointers",
+      "topic": "langgraph",
+      "content": "LangGraph persists graph state through a checkpointer passed at compile time: graph = builder.compile(checkpointer=...). A checkpoint of the full graph state is written after every super-step, keyed by a thread_id supplied in the run config ({\"configurable\": {\"thread_id\": \"...\"}}). InMemorySaver is for prototyping only — state is lost when the process exits. For durability across restarts use SqliteSaver (single-node) or PostgresSaver (production). Persistence is thread-scoped: a thread_id identifies one conversation's history, and re-invoking with the same thread_id resumes from the latest checkpoint. Checkpointers are also a prerequisite for human-in-the-loop interrupts, since resuming an interrupted graph replays from the saved checkpoint."
+    },
+    "lg-interrupts": {
+      "id": "lg-interrupts",
+      "title": "Human-in-the-loop interrupts in LangGraph",
+      "topic": "langgraph",
+      "content": "LangGraph supports pausing a graph for human input in two ways. Static breakpoints: pass interrupt_before=[\"node_name\"] or interrupt_after=[...] at compile time to pause around named nodes. Dynamic interrupts: call interrupt(payload) inside a node to pause mid-node and surface the payload to the caller. Both REQUIRE a checkpointer, because the pause is implemented as a saved checkpoint. To resume, invoke the graph again on the same thread_id with Command(resume=value) — the value becomes the return value of the interrupt() call. With a durable checkpointer (SqliteSaver or PostgresSaver) an interrupted graph can be resumed after a full process restart, which is how approval workflows that wait hours or days are built."
+    },
+    "lg-state": {
+      "id": "lg-state",
+      "title": "State schemas and reducers in LangGraph",
+      "topic": "langgraph",
+      "content": "A StateGraph is defined over a state schema (a TypedDict, dataclass, or Pydantic model). Each key may declare a reducer via Annotated — e.g. Annotated[list, operator.add] — which controls how node updates merge into the existing value. Without a reducer, a node's return value overwrites the key. The add_messages reducer used for chat state is append-only with one exception: a new message carrying the same id as an existing one replaces it (upsert-by-id), which is what enables message editing and streaming updates."
+    },
+    "lg-subgraphs-send": {
+      "id": "lg-subgraphs-send",
+      "title": "Subgraphs and the Send API for map-reduce fan-out",
+      "topic": "langgraph",
+      "content": "A compiled LangGraph can be added as a node of a parent graph (a subgraph), sharing or mapping state keys between parent and child. For dynamic parallelism LangGraph provides the Send API: a conditional edge function may return a list of Send(node_name, private_state) objects, and the runtime dispatches one parallel branch per Send, each seeing only the private state it was handed. This is the map-reduce pattern: fan a list out to N parallel workers, then let a reducer on the destination key merge their results back into the parent state."
+    },
+    "lg-memory-store": {
+      "id": "lg-memory-store",
+      "title": "Cross-thread memory with the LangGraph Store",
+      "topic": "langgraph",
+      "content": "Checkpointers are thread-scoped; for memory shared ACROSS threads (e.g. user profile facts remembered between conversations) LangGraph provides the BaseStore interface, with InMemoryStore as the reference implementation. Items are stored under a namespace tuple (such as (\"memories\", user_id)) with put/get/search. A store can be created with an index configuration ({\"embed\": embedding_fn, \"dims\": ...}) to enable semantic search over stored items. The store is passed to compile(store=...) and injected into nodes; use a checkpointer for conversation history and a store for durable cross-conversation memory."
+    },
+    "lg-streaming": {
+      "id": "lg-streaming",
+      "title": "Streaming modes in LangGraph",
+      "topic": "langgraph",
+      "content": "graph.stream / graph.astream accept a stream_mode argument with five supported values: \"values\" (the full state after each super-step), \"updates\" (only each node's returned delta), \"messages\" (LLM tokens plus metadata as they are generated inside nodes), \"custom\" (arbitrary payloads emitted by nodes via a stream writer), and \"debug\" (detailed trace events). Passing a list of modes (e.g. stream_mode=[\"updates\", \"messages\"]) yields (mode, chunk) tuples. \"values\" and \"updates\" are the two most common for surfacing graph progress."
+    },
+    "lg-recursion": {
+      "id": "lg-recursion",
+      "title": "GraphRecursionError and the recursion limit",
+      "topic": "langgraph",
+      "content": "LangGraph counts super-steps during an invocation, and when the count exceeds the recursion limit it raises langgraph.errors.GraphRecursionError. The default recursion_limit is 25 super-steps. It is raised most often by cycles — an agent loop that never satisfies its termination condition, or two nodes handing control back and forth. The limit is configured PER INVOCATION in the run config, at the top level (not inside configurable): graph.invoke(state, config={\"recursion_limit\": 50}). Raising the limit treats the symptom; if the loop has no reachable termination condition the graph will simply fail later, so also verify the conditional edge that should route to END."
+    },
+    "lg-react-agent": {
+      "id": "lg-react-agent",
+      "title": "create_react_agent — the prebuilt tool-calling agent",
+      "topic": "langgraph",
+      "content": "langgraph.prebuilt.create_react_agent(model, tools) returns a compiled ReAct-style graph: the model is called with the tool schemas bound, tool calls are executed by a ToolNode, and results loop back to the model until it responds without tool calls. It accepts an optional prompt (system prompt or callable), a response_format for structured final output, and a checkpointer for memory. This prebuilt is the RECOMMENDED replacement for the legacy LangChain AgentExecutor: it is a plain LangGraph graph, so it composes with checkpointers, interrupts, streaming, and subgraphs like any other graph."
+    },
+    "lc-agentexecutor-legacy": {
+      "id": "lc-agentexecutor-legacy",
+      "title": "Legacy agents: initialize_agent and AgentExecutor are deprecated",
+      "topic": "langchain",
+      "content": "The classic LangChain agent entry points — initialize_agent and the AgentExecutor runtime — are deprecated and receive no new features. They predate first-class tool-calling APIs and offer no durable state, no human-in-the-loop pausing, and limited streaming. New code should build agents on LangGraph, with langgraph.prebuilt.create_react_agent as the drop-in starting point for a tool-calling agent. Migration is mostly mechanical: tools carry over unchanged, the system prompt moves to the prompt argument, and memory moves to a LangGraph checkpointer keyed by thread_id."
+    },
+    "lc-memory-legacy": {
+      "id": "lc-memory-legacy",
+      "title": "Conversation memory: legacy memory classes are deprecated",
+      "topic": "langchain",
+      "content": "The pre-0.3 memory classes — ConversationBufferMemory, ConversationSummaryMemory, ConversationBufferWindowMemory and relatives — are deprecated in langchain 0.3 and should not be used in new code. The recommended pattern for conversation memory is LangGraph persistence: compile the graph with a checkpointer and pass a thread_id per conversation, so the message history is checkpointed automatically after every step. For memory that must span conversations (user preferences, long-term facts), use the LangGraph Store rather than a memory class. RunnableWithMessageHistory remains only as a bridge for plain LCEL chains that have not moved to LangGraph."
+    },
+    "lc-lcel": {
+      "id": "lc-lcel",
+      "title": "LangChain Expression Language (LCEL) composition",
+      "topic": "langchain",
+      "content": "LCEL composes Runnables with the | operator: prompt | model | parser builds a RunnableSequence. Every Runnable exposes a uniform interface — invoke, batch, stream, plus async variants ainvoke/abatch/astream — so a composed chain streams and batches without extra code. RunnableParallel (a dict literal in a chain) runs branches concurrently and returns a dict of their results; RunnablePassthrough forwards its input unchanged and RunnablePassthrough.assign adds computed keys. LCEL is best for straight-line data flows; once you need cycles, branching on state, or persistence, reach for LangGraph instead."
+    },
+    "lc-retrievers": {
+      "id": "lc-retrievers",
+      "title": "The retriever interface and vector-store retrievers",
+      "topic": "langchain",
+      "content": "A retriever is a Runnable that maps a string query to a list of Documents. Any vector store yields one via vectorstore.as_retriever(search_type=..., search_kwargs=...). search_type is \"similarity\" (the default), \"mmr\" (maximal marginal relevance, which trades relevance for diversity among results), or \"similarity_score_threshold\" (drops results scoring under search_kwargs[\"score_threshold\"]). search_kwargs carries k — the number of documents returned, defaulting to 4 — plus provider-specific filters. Because retrievers are Runnables, they compose in LCEL chains and LangGraph nodes and support ainvoke for async retrieval."
+    },
+    "lc-vectorstores": {
+      "id": "lc-vectorstores",
+      "title": "Vector stores: InMemoryVectorStore and beyond",
+      "topic": "langchain",
+      "content": "langchain-core ships InMemoryVectorStore, an in-process vector store suited to prototyping and tests: construct it with an embeddings object, add documents with add_documents(docs, ids=...), and query with similarity_search(query, k=...) or similarity_search_with_score (which also returns the similarity score per hit). It performs an exact scan, so it is not intended for large corpora — for production workloads use a dedicated backend integration such as FAISS, Chroma, Elasticsearch, Pinecone, or MongoDB Atlas Vector Search, all of which expose the same vector-store interface and as_retriever."
+    },
+    "lc-embeddings": {
+      "id": "lc-embeddings",
+      "title": "Embedding models in LangChain",
+      "topic": "langchain",
+      "content": "Embedding integrations implement embed_documents(texts) and embed_query(text). With langchain-openai, OpenAIEmbeddings(model=\"text-embedding-3-small\") is the cost-effective default and \"text-embedding-3-large\" the higher-quality option; both text-embedding-3 models accept a dimensions parameter to shorten the returned vectors when the index benefits from smaller vectors. Cohere models are available through CohereEmbeddings in langchain-cohere. The embedding model used to build an index MUST also be the one used for queries against it — mixing models silently degrades retrieval because the vector spaces differ."
+    },
+    "lc-text-splitters": {
+      "id": "lc-text-splitters",
+      "title": "Text splitting for indexing",
+      "topic": "langchain",
+      "content": "Documents are usually split into chunks before embedding. RecursiveCharacterTextSplitter is the recommended general-purpose splitter: it tries a hierarchy of separators — paragraph breaks (\"\\n\\n\"), then line breaks, then spaces, then individual characters — so chunks follow natural text boundaries where possible. Its two main knobs are chunk_size (the maximum chunk length, measured by the configured length function, characters by default) and chunk_overlap (how much neighboring chunks share, which preserves context that straddles a boundary). Language-aware variants (from_language) split code along syntactic separators, and length can be measured in tokens via from_tiktoken_encoder."
+    },
+    "lc-structured-output": {
+      "id": "lc-structured-output",
+      "title": "Structured output with with_structured_output",
+      "topic": "langchain",
+      "content": "chat_model.with_structured_output(schema) returns a runnable that yields parsed objects instead of raw text. The schema may be a Pydantic model (returns model instances, with validation), a TypedDict, or a JSON schema dict (both return plain dicts). Under the hood the model is steered via its native structured-output support or tool calling; the method argument selects the mechanism (e.g. \"function_calling\" or \"json_schema\") where a provider supports both. Passing include_raw=True returns the raw message alongside the parsed value so parsing failures can be inspected rather than raised."
+    },
+    "lc-tools": {
+      "id": "lc-tools",
+      "title": "Defining tools and binding them to models",
+      "topic": "langchain",
+      "content": "The @tool decorator turns a function into a LangChain tool, deriving its name, description and argument schema from the signature and docstring (an explicit args_schema Pydantic model overrides inference). Chat models accept tools via bind_tools(tools); the model's response then carries a tool_calls list with the arguments to execute. In LangGraph, langgraph.prebuilt.ToolNode executes the tool calls found in the latest AI message and appends ToolMessages with the results — create_react_agent wires exactly this loop."
+    },
+    "ls-tracing": {
+      "id": "ls-tracing",
+      "title": "LangSmith tracing setup",
+      "topic": "langsmith",
+      "content": "LangSmith tracing for a LangChain or LangGraph app is enabled entirely through environment variables: set LANGSMITH_TRACING=true and LANGSMITH_API_KEY to your key, with LANGSMITH_PROJECT selecting the project traces land in (\"default\" when unset). Every chain, model call, tool call and graph node then logs a run tree automatically — no code changes. Non-LangChain code is traced by decorating functions with @traceable from the langsmith package. The older LANGCHAIN_TRACING_V2 / LANGCHAIN_API_KEY variable spellings remain supported aliases, but the LANGSMITH_* forms are the current ones."
+    },
+    "ls-evals": {
+      "id": "ls-evals",
+      "title": "Offline evaluation with the LangSmith SDK",
+      "topic": "langsmith",
+      "content": "LangSmith offline evaluation runs your application over a Dataset of examples and scores each run: evaluate(target_fn, data=dataset_name, evaluators=[...]) executes the target per example and applies each evaluator to the (inputs, outputs, reference_outputs) triple. An evaluator returns a score — a boolean, number, or a dict such as {\"key\": \"correctness\", \"score\": 1} — and results attach to the experiment for comparison in the UI. LLM-as-judge evaluators are supported alongside exact-match and custom code evaluators, and pairwise evaluation (evaluate_comparative) ranks two experiments' outputs against each other."
+    },
+    "lc-runnable-config": {
+      "id": "lc-runnable-config",
+      "title": "RunnableConfig: configurable fields, tags, and propagation",
+      "topic": "langchain",
+      "content": "Every Runnable invocation accepts a RunnableConfig dict carrying tags, metadata, run_name, callbacks, and a configurable dict of user-defined values. The config propagates automatically to every nested Runnable in the call — in async Python 3.10 and earlier, propagation relies on contextvars, so custom nodes that spawn their own tasks should pass the config through explicitly. Declared configurable fields (via configurable_fields / configurable_alternatives, or a LangGraph config_schema) let one compiled object be re-parameterized per call — e.g. swapping the model — without rebuilding the chain; graph nodes read the values back from the config argument."
+    },
+    "lg-graph-api": {
+      "id": "lg-graph-api",
+      "title": "Building a StateGraph: nodes, edges, and compilation",
+      "topic": "langgraph",
+      "content": "A graph is assembled on a StateGraph builder: add_node registers a node (a function or Runnable receiving the state and returning a partial update), add_edge draws an unconditional edge, and add_conditional_edges routes based on a function of the state — returning a node name, END, or a list of Send objects for fan-out. Entry is declared by an edge from START. compile() validates the wiring and returns a runnable graph; compile-time options include checkpointer, store, and the interrupt_before / interrupt_after breakpoint lists. The compiled graph is itself a Runnable, so invoke/stream/batch and their async forms all work."
+    }
+  },
+  "_context_stores": {
+    "langchain_docs": {
+      "entity_type": "kb_article",
+      "access_modes": ["semantic"],
+      "content_field": "content",
+      "title": "LangChain documentation corpus"
+    }
+  }
+}
