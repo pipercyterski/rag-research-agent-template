@@ -73,6 +73,8 @@ class DystopicSeededRetriever:
                     )
                     for doc in corpus
                     if isinstance(doc, dict) and doc.get("doc_id")
+                    # Scope the index to core library docs to shrink embedding cost.
+                    and str(doc.get("doc_id", "")).startswith("lc-")
                 ]
                 vstore = InMemoryVectorStore(embedding=self.embedding_model)
                 await vstore.aadd_documents(
