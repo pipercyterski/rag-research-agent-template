@@ -31,7 +31,7 @@ from dystopic.odyssey.context import set_current  # noqa: E402
 
 GRAPH_CONFIG = {
     "configurable": {
-        "query_model": "openai/gpt-4o-mini",
+        "query_model": "openai/gpt-4o",
         "response_model": "openai/gpt-4o-mini",
         "embedding_model": "openai/text-embedding-3-small",
         "retriever_provider": "dystopic",
